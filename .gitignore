@@ -1,0 +1,23 @@
+# Byte-compiled
+__pycache__/
+*.py[cod]
+
+# Environments
+.env
+.venv
+
+# VS Code / PyCharm
+.vscode/
+.idea/
+
+# TouchDesigner server — generated outputs
+test_output.png
+test_pipeline_output/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
