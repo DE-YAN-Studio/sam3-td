@@ -91,7 +91,7 @@ REM ── 4. Install SAM3 and server dependencies ─────────�
 echo.
 echo [4/5] Installing SAM3 and server dependencies...
 
-"%CONDA_EXE%" run -n %ENV_NAME% --no-capture-output pip install -e "%REPO_DIR%sam3\.[notebooks]"
+"%CONDA_EXE%" run -n %ENV_NAME% --no-capture-output pip install -e "%REPO_DIR%vendor\sam3\.[notebooks]"
 if %ERRORLEVEL% neq 0 (
     echo [FAIL] SAM3 installation failed.
     pause & exit /b 1

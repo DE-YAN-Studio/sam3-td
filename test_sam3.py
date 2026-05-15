@@ -106,7 +106,7 @@ section("4 / 5  Image Inference")
 from PIL import Image
 import os
 
-TEST_IMAGE = os.path.join(os.path.dirname(__file__), "sam3", "assets", "images", "truck.jpg")
+TEST_IMAGE = os.path.join(os.path.dirname(__file__), "vendor", "sam3", "assets", "images", "truck.jpg")
 PROMPT     = "truck"
 
 if not os.path.exists(TEST_IMAGE):
@@ -118,8 +118,9 @@ info(f"Prompt: '{PROMPT}'")
 
 try:
     t0 = time.time()
-    state  = processor.set_image(img)
-    output = processor.set_text_prompt(state=state, prompt=PROMPT)
+    with torch.autocast("cuda", dtype=torch.bfloat16):
+        state  = processor.set_image(img)
+        output = processor.set_text_prompt(state=state, prompt=PROMPT)
     elapsed = time.time() - t0
     ok(f"Inference completed in {elapsed:.2f} s")
 except Exception as e:

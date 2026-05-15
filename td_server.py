@@ -157,8 +157,9 @@ def build_textured_composite(masks: np.ndarray, source: np.ndarray) -> Image.Ima
 def run_inference(pil_img: Image.Image, prompt: str):
     """Run SAM3 and return (masks_nhw, scores_list, boxes_list)."""
     processor = model_state["processor"]
-    state = processor.set_image(pil_img)
-    output = processor.set_text_prompt(state=state, prompt=prompt)
+    with torch.autocast("cuda", dtype=torch.bfloat16):
+        state = processor.set_image(pil_img)
+        output = processor.set_text_prompt(state=state, prompt=prompt)
 
     masks = normalize_masks(output["masks"])
 

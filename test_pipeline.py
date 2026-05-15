@@ -42,7 +42,7 @@ def section(t):   print(f"\n{CYAN}{'-'*52}{RESET}\n  {t}\n{CYAN}{'-'*52}{RESET}"
 SERVER_URL  = "http://localhost:8765"
 PYTHON_EXE  = sys.executable
 SERVER_DIR  = os.path.dirname(os.path.abspath(__file__))
-TEST_IMAGE  = os.path.join(SERVER_DIR, "sam3", "assets", "images", "truck.jpg")
+TEST_IMAGE  = os.path.join(SERVER_DIR, "vendor", "sam3", "assets", "images", "truck.jpg")
 PROMPT      = "truck"
 OUT_DIR     = os.path.join(SERVER_DIR, "test_pipeline_output")
 os.makedirs(OUT_DIR, exist_ok=True)
