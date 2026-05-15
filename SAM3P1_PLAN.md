@@ -115,20 +115,94 @@ Option 2. Option 3 is the fallback if Option 2 turns out worse than expected.
   set `fill_hole_area=0` in the builder, or get a Windows triton build
   working.
 
-## Pick-up checklist
+## Resume steps
 
-When resuming:
+### 0. Verify env is intact (~5 min)
 
-1. `git checkout sam3p1`
-2. `git submodule update --init --recursive` (since path moved to `vendor/sam3`)
-3. Run `test_sam3.py` to confirm env still works
-4. Pick an option above
-5. If Option 1: start with `td_server.py` — add a `SessionManager` class that
-   holds the predictor, opens 30s sessions with a list of dummy PIL frames,
-   auto-restarts at frame N. New endpoints dispatch through it.
-6. If Option 2: start by reading `sam3_multiplex_tracking.py:106-280` end-to-end
-   before touching anything. The metadata lists are the real obstacle, not
-   the image tensor.
+```powershell
+git checkout sam3p1
+git submodule update --init --recursive
+& "C:\ProgramData\anaconda3\Scripts\conda.exe" run -n sam3 hf auth whoami
+& "C:\ProgramData\anaconda3\Scripts\conda.exe" run -n sam3 python test_sam3.py
+```
+
+Expect: `Not logged in` → re-run `hf auth login` (interactive, paste token).
+Then `test_sam3.py` should print "All tests passed" with model load ~7s,
+inference ~0.7s. If it fails: `pip install -e ./vendor/sam3 --no-deps` in
+the sam3 conda env, then re-run.
+
+### 1. Pick an option (5 min, just decide)
+
+See "Three paths forward" above. Default to Option 1 unless you have a new
+reason to skip it. The rest of this checklist assumes Option 1.
+
+### 2. Build SessionManager in `td_server.py` (~4 hours)
+
+New class in `td_server.py`, loaded lazily on first `/stream/start`:
+
+- Constructor: build multiplex predictor via
+  `build_sam3_multiplex_video_predictor()` (see `model_builder.py:1070`).
+  Pass `version="sam3.1"` to `download_ckpt_from_hf` via `checkpoint_path`
+  arg if needed.
+- `start(prompt, max_frames=900)` (= 30s @ 30fps): call
+  `predictor.handle_request({"type": "start_session", "resource_path": [PIL.Image.new("RGB",(W,H))] * max_frames})`,
+  then `add_prompt` with the text. Returns `session_id` and current `frame_idx=0`.
+- `push_frame(session_id, pil_img)`: write `pil_img` into the slot at the
+  current frame_idx in `inference_state["input_batch"].img_batch.tensors`
+  (after applying the normalize transform from `io_utils.py:54-65`), then
+  call `_run_single_frame_inference(state, frame_idx, reverse=False, ...)`
+  directly (skipping the resource-file iteration in `propagate_in_video`).
+  Increment frame_idx. Return masks + per-instance obj_id + scores + boxes.
+- If frame_idx hits max_frames: close session and start a new one with the
+  same prompt. Boundary flicker is expected here.
+- `end(session_id)`: `predictor.handle_request({"type": "close_session", ...})`.
+
+Reuse the existing mask serialization helpers (`build_composite`,
+`build_textured_composite` etc. in `td_server.py:98-154`).
+
+### 3. Add HTTP endpoints (~1 hour)
+
+In `td_server.py`:
+
+- `POST /stream/start` — body: `{prompt}`. Returns `{session_id, frame_idx}`.
+- `POST /stream/frame` — multipart: `session_id`, `image` (JPEG). Returns
+  the same JSON shape as `/segment` today, plus `frame_idx` and a per-
+  instance `obj_id` field. Keep `/segment` working for one-shots.
+- `POST /stream/end` — body: `{session_id}`. Returns `{closed: true}`.
+
+### 4. Rewrite TD client (~3 hours)
+
+In `td_scripts/sam3_td.py`:
+
+- Replace per-call POST flow with a session opened on first `sam3_segment()`
+  call. Cache `session_id` on the module.
+- Push frames over HTTP keepalive (use `http.client.HTTPConnection`,
+  reuse one connection across calls — much faster than current per-call
+  `urllib`).
+- Switch `manage_tops` (`td_scripts/sam3_td.py:108-177`) keying from
+  positional index to tracker `obj_id` so the `sam3_instance_N` and
+  `sam3_textured_N` TOPs stop reshuffling when instance counts change.
+- Drop the `_is_running` guard for frame submission — keepalive makes
+  serial pushes cheap.
+
+### 5. End-to-end smoke (~1 hour)
+
+- Restart server: `start_server.bat`.
+- Run `test_pipeline.py` against the old `/segment` to confirm nothing
+  regressed there.
+- Write a small new test (`test_stream.py` modelled on `test_pipeline.py`)
+  that opens a stream, pushes 200 frames from a webcam capture or a video
+  file decoded with cv2, and validates that `obj_id`s persist across frames.
+- Open TD, load `sam3` Text DAT, fire `sam3_segment()` against a Video
+  Device In TOP. Watch for: stable obj_id across frames, brief flicker at
+  the 30s boundary.
+
+### 6. If Option 2 instead
+
+Start by reading `sam3_multiplex_tracking.py:106-280` end-to-end before
+touching anything. The metadata lists are the real obstacle, not the image
+tensor. Then plan a ring-storage rewrite as a separate commit series on
+the `DE-YAN-Studio/sam3` fork's `sam3p1` branch.
 
 ## Key file refs (from spike)
 
